@@ -1,94 +1,86 @@
-# coding: utf8
 
-# @Author: 郭 璞
-# @File: MyZhiHuLogin.py                                                                 
-# @Time: 2017/4/8                                   
-# @Contact: 1064319632@qq.com
-# @blog: http://blog.csdn.net/marksinoberg
-# @Description: 我的模拟登录知乎
-
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+#not working anymore
 import requests
-from bs4 import BeautifulSoup
-import os, time
+try:
+    import cookielib
+except:
+    import http.cookiejar as cookielib
 import re
-# import http.cookiejar as cookielib
-
+import time
+import os.path
+try:
+    from PIL import Image
+except:
+    pass
+session = requests.session()
+session.cookies = cookielib.LWPCookieJar(filename='cookies')
 # 构造 Request headers
-agent = 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Mobile Safari/537.36'
+agent = 'Mozilla/5.0 (Windows NT 5.1; rv:33.0) Gecko/20100101 Firefox/33.0'
 headers = {
     "Host": "www.zhihu.com",
     "Referer": "https://www.zhihu.com/",
     'User-Agent': agent
 }
 
-######### 构造用于网络请求的session
-session = requests.Session()
-# session.cookies = cookielib.LWPCookieJar(filename='zhihucookie')
-# try:
-#     session.cookies.load(ignore_discard=True)
-# except:
-#     print('cookie 文件未能加载')
+def get_xsrf():
+    '''_xsrf 是一个动态变化的参数'''
+    index_url = 'https://www.zhihu.com'
+    # 获取登录时需要用到的_xsrf
+    index_page = session.get(index_url, headers=headers)
+    html = index_page.text
+    pattern = r'name="_xsrf" value="(.*?)"'
+    # 这里的_xsrf 返回的是一个list
+    _xsrf = re.findall(pattern, html)
+    return _xsrf[0]
 
-############ 获取xsrf_token
-homeurl = 'https://www.zhihu.com'
-homeresponse = session.get(url=homeurl, headers=headers)
-homesoup = BeautifulSoup(homeresponse.text, 'html.parser')
-xsrfinput = homesoup.find('input', {'name': '_xsrf'})
-xsrf_token = xsrfinput['value']
-print("获取到的xsrf_token为： ", xsrf_token)
+def login(secret, account):
+    # 通过输入的用户名判断是否是手机号
+    if re.match(r"^1\d{10}$", account):
+        print("手机号登录 \n")
+        post_url = 'https://www.zhihu.com/login/phone_num'
+        postdata = {
+            '_xsrf': get_xsrf(),
+            'password': secret,
+            'remember_me': 'true',
+            'phone_num': account,
+        }
+    else:
+        if "@" in account:
+            print("邮箱登录 \n")
+        else:
+            print("你的账号输入有问题，请重新登录")
+            return 0
+        post_url = 'https://www.zhihu.com/login/email'
+        postdata = {
+            '_xsrf': get_xsrf(),
+            'password': secret,
+            'remember_me': 'true',
+            'email': account,
+        }
+    try:
+        # 不需要验证码直接登录成功
+        login_page = session.post(post_url, data=postdata, headers=headers)
+        login_code = login_page.text
+        print(login_page.status_code)
+        print(login_code)
+    except:
+        # 需要输入验证码后才能登录成功
+        postdata["captcha"] = get_captcha()
+        login_page = session.post(post_url, data=postdata, headers=headers)
+        login_code = eval(login_page.text)
+        print(login_code['msg'])
+    session.cookies.save()
 
-########## 获取验证码文件
-randomtime = str(int(time.time() * 1000))
-captchaurl = 'https://www.zhihu.com/captcha.gif?r='+\
-             randomtime+"&type=login"
-captcharesponse = session.get(url=captchaurl, headers=headers)
-with open('checkcode.gif', 'wb') as f:
-    f.write(captcharesponse.content)
-    f.close()
-# os.startfile('checkcode.gif')
-captcha = input('请输入验证码：')
-print(captcha)
+try:
+    input = raw_input
+except:
+    pass
 
-########### 开始登陆
-headers['X-Xsrftoken'] = xsrf_token
-headers['X-Requested-With'] = 'XMLHttpRequest'
-loginurl = 'https://www.zhihu.com/login/email'
-postdata = {
-    '_xsrf': xsrf_token,
-    'email': '邮箱@qq.com',
-    'password': '密码'
-}
-loginresponse = session.post(url=loginurl, headers=headers, data=postdata)
-print('服务器端返回响应码：', loginresponse.status_code)
-print(loginresponse.json())
-# 验证码问题输入导致失败: 猜测这个问题是由于session中对于验证码的请求过期导致
-if loginresponse.json()['r']==1:
-    # 重新输入验证码，再次运行代码则正常。也就是说可以再第一次不输入验证码，或者输入一个错误的验证码，只有第二次才是有效的
-    randomtime = str(int(time.time() * 1000))
-    captchaurl = 'https://www.zhihu.com/captcha.gif?r=' + \
-                 randomtime + "&type=login"
-    captcharesponse = session.get(url=captchaurl, headers=headers)
-    with open('checkcode.gif', 'wb') as f:
-        f.write(captcharesponse.content)
-        f.close()
-    os.startfile('checkcode.gif')
-    captcha = input('请输入验证码：')
-    print(captcha)
-
-    postdata['captcha'] = captcha
-    loginresponse = session.post(url=loginurl, headers=headers, data=postdata)
-    print('服务器端返回响应码：', loginresponse.status_code)
-    print(loginresponse.json())
-
-
-
-
-##########################保存登陆后的cookie信息
-# session.cookies.save()
-############################判断是否登录成功
-profileurl = 'https://www.zhihu.com/settings/profile'
-profileresponse = session.get(url=profileurl, headers=headers)
-print('profile页面响应码：', profileresponse.status_code)
-profilesoup = BeautifulSoup(profileresponse.text, 'html.parser')
-div = profilesoup.find('div', {'id': 'rename-section'})
-print(div)
+if __name__ == '__main__':
+     #account = input('请输入你的用户名\n>  ')
+     #secret = input("请输入你的密码\n>  ")
+     account='liyulongsjtu@hotmail.com'
+     secret='xlandwx690'
+     login(secret, account)

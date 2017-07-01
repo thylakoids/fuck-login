@@ -1,18 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-'''
-Required
-- requests (必须)
-- pillow (可选)
-Info
-- author : "xchaoinfo"
-- email  : "xchaoinfo@qq.com"
-- date   : "2016.2.4"
-Update
-- name   : "wangmengcn"
-- email  : "eclipse_sv@163.com"
-- date   : "2016.4.21"
-'''
+# try to deal with captcha
 import requests
 try:
     import cookielib
@@ -21,14 +9,11 @@ except:
 import re
 import time
 import os.path
-try:
-    from PIL import Image
-except:
-    pass
+from PIL import Image
 
 
 # 构造 Request headers
-agent = 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Mobile Safari/537.36'
+agent = 'Mozilla/5.0 (Windows NT 5.1; rv:33.0) Gecko/20100101 Firefox/33.0'
 headers = {
     "Host": "www.zhihu.com",
     "Referer": "https://www.zhihu.com/",
@@ -59,7 +44,7 @@ def get_xsrf():
 # 获取验证码
 def get_captcha():
     t = str(int(time.time() * 1000))
-    captcha_url = 'https://www.zhihu.com/captcha.gif?r=' + t + "&type=login"
+    captcha_url = 'https://www.zhihu.com/captcha.gif?r=' + t + "&type=login&lang=cn"
     r = session.get(captcha_url, headers=headers)
     with open('captcha.jpg', 'wb') as f:
         f.write(r.content)
@@ -87,17 +72,15 @@ def isLogin():
 
 
 def login(secret, account):
-    _xsrf = get_xsrf()
-    headers["X-Xsrftoken"] = _xsrf
-    headers["X-Requested-With"] = "XMLHttpRequest"
     # 通过输入的用户名判断是否是手机号
     if re.match(r"^1\d{10}$", account):
         print("手机号登录 \n")
         post_url = 'https://www.zhihu.com/login/phone_num'
         postdata = {
-            '_xsrf': _xsrf,
+            '_xsrf': get_xsrf(),
             'password': secret,
-            'phone_num': account
+            'remember_me': 'true',
+            'phone_num': account,
         }
     else:
         if "@" in account:
@@ -107,24 +90,24 @@ def login(secret, account):
             return 0
         post_url = 'https://www.zhihu.com/login/email'
         postdata = {
-            '_xsrf': _xsrf,
+            '_xsrf': get_xsrf(),
             'password': secret,
-            'email': account
+            'email': account,
+            'captcha_type': 'cn'
         }
-    # 不需要验证码直接登录成功
-    login_page = session.post(post_url, data=postdata, headers=headers)
-    login_code = login_page.json()
-    if login_code['r'] == 1:
-        # 不输入验证码登录失败
-        # 使用需要输入验证码的方式登录
-        postdata["captcha"] = get_captcha()
+    try:
+        # 不需要验证码直接登录成功
         login_page = session.post(post_url, data=postdata, headers=headers)
         login_code = login_page.json()
-        print(login_code['msg'])
-    # 保存 cookies 到文件，
-    # 下次可以使用 cookie 直接登录，不需要输入账号和密码
-    session.cookies.save()
-
+        if login_code['r']==1: 
+            #需要输入验证码后才能登录成功
+            postdata["captcha"] = get_captcha()
+            login_page = session.post(post_url, data=postdata, headers=headers)
+            login_code = eval(login_page.text)
+            print(login_code['msg'])
+        session.cookies.save()
+    except Exception,e:
+        print 'Error:'+e.__doc__
 try:
     input = raw_input
 except:
@@ -135,6 +118,8 @@ if __name__ == '__main__':
     if isLogin():
         print('您已经登录')
     else:
-        account = input('请输入你的用户名\n>  ')
-        secret = input("请输入你的密码\n>  ")
+        #account = input('请输入你的用户名\n>  ')
+        #secret = input("请输入你的密码\n>  ")
+        account='liyulongsjtu@hotmail.com'
+        secret='xlandwx690'
         login(secret, account)
